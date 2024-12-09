@@ -1,27 +1,29 @@
 # Pull base image
-FROM python:3.12.2-slim-bookworm
+FROM python:3.12-slim-bullseye
 
 # Set environment variables
 ENV PYTHONDONTWRITEBYTECODE 1
 ENV PYTHONUNBUFFERED 1
+ENV PIP_DISABLE_PIP_VERSION_CHECK 1
 
-# Create and set work directory called `app`
-RUN mkdir -p /code
+# Set work directory
 WORKDIR /code
 
-# Install dependencies
-COPY requirements.txt /tmp/requirements.txt
+# Install system dependencies
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        postgresql-client \
+    && rm -rf /var/lib/apt/lists/*
 
-RUN set -ex && \
-    pip install --upgrade pip && \
-    pip install -r /tmp/requirements.txt && \
-    rm -rf /root/.cache/
+# Install Python dependencies
+COPY requirements.txt .
+RUN pip install -r requirements.txt
 
-# Copy local project
-COPY . /code/
+# Copy project
+COPY . .
 
-# Expose port 8000
-EXPOSE 8000
+# Collect static files
+RUN python manage.py collectstatic --noinput
 
-# Use gunicorn on port 8000
-CMD ["gunicorn", "--bind", ":8000", "--workers", "2", "django_project.wsgi"]
+# Run gunicorn
+CMD ["gunicorn", "--bind", "0.0.0.0:8000", "django_project.wsgi"]

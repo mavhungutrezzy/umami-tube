@@ -1,19 +1,72 @@
+version: '3.9'
+
 services:
   web:
     build: .
-    command: python /code/manage.py runserver 0.0.0.0:8000
+    command: gunicorn django_project.wsgi:application --bind 0.0.0.0:8000
     volumes:
       - .:/code
-    ports:
-      - 8000:8000
+      - static_volume:/code/staticfiles
+      - media_volume:/code/media
+      - ./logs:/code/logs
+    expose:
+      - 8000
+    env_file:
+      - .env
     depends_on:
       - db
+  
   db:
-    image: postgres:16
+    image: postgres:15
     volumes:
       - postgres_data:/var/lib/postgresql/data/
+    env_file:
+      - .env
     environment:
-      - "POSTGRES_HOST_AUTH_METHOD=trust"
+      - POSTGRES_DB=${POSTGRES_DB:-postgres}
+      - POSTGRES_USER=${POSTGRES_USER:-postgres}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres}
+  
+  nginx:
+    build: ./nginx
+    volumes:
+      - static_volume:/code/staticfiles
+      - media_volume:/code/media
+    ports:
+      - "80:80"
+    depends_on:
+      - web
+
+  prometheus:
+    image: prom/prometheus:v2.48.1
+    volumes:
+      - ./prometheus:/etc/prometheus
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
+      - '--web.console.templates=/usr/share/prometheus/consoles'
+    ports:
+      - "9090:9090"
+    depends_on:
+      - web
+
+  grafana:
+    image: grafana/grafana:10.2.3
+    volumes:
+      - grafana_data:/var/lib/grafana
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-admin}
+      - GF_USERS_ALLOW_SIGN_UP=false
+    ports:
+      - "3000:3000"
+    depends_on:
+      - prometheus
 
 volumes:
   postgres_data:
+  static_volume:
+  media_volume:
+  prometheus_data:
+  grafana_data:
